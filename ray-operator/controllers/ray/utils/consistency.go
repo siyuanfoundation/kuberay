@@ -30,6 +30,13 @@ func InconsistentRayClusterStatus(oldStatus rayv1.RayClusterStatus, newStatus ra
 	if !reflect.DeepEqual(oldStatus.Conditions, newStatus.Conditions) {
 		return true
 	}
+	if !reflect.DeepEqual(oldStatus.LastPodSnapshotTime, newStatus.LastPodSnapshotTime) {
+		return true
+	}
+	if oldStatus.LastPodSnapshotName != newStatus.LastPodSnapshotName ||
+		oldStatus.LastPodSnapshotStatus != newStatus.LastPodSnapshotStatus {
+		return true
+	}
 	return false
 }
 
