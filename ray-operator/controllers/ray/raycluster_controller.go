@@ -302,6 +302,48 @@ func (r *RayClusterReconciler) rayClusterReconcile(ctx context.Context, instance
 		}
 	}
 
+	enablePodSnapshotCleanup := instance.Spec.HeadGroupSpec.HeadBackupRestore != nil &&
+		instance.Spec.HeadGroupSpec.HeadBackupRestore.Enable != nil &&
+		*instance.Spec.HeadGroupSpec.HeadBackupRestore.Enable
+
+	if enablePodSnapshotCleanup {
+		if instance.DeletionTimestamp.IsZero() {
+			if !controllerutil.ContainsFinalizer(instance, utils.PodSnapshotCleanupFinalizer) {
+				logger.Info(
+					"PodSnapshot has been enabled. Implementing a finalizer to ensure that PodSnapshots are properly cleaned up once the RayCluster custom resource (CR) is deleted.",
+					"finalizer", utils.PodSnapshotCleanupFinalizer)
+				controllerutil.AddFinalizer(instance, utils.PodSnapshotCleanupFinalizer)
+				if err := r.Update(ctx, instance); err != nil {
+					err = fmt.Errorf("failed to add the finalizer %s to the RayCluster: %w", utils.PodSnapshotCleanupFinalizer, err)
+					return ctrl.Result{RequeueAfter: DefaultRequeueDuration}, err
+				}
+				// Only start the RayCluster reconciliation after the finalizer is added.
+				return ctrl.Result{RequeueAfter: DefaultRequeueDuration}, nil
+			}
+		} else if controllerutil.ContainsFinalizer(instance, utils.PodSnapshotCleanupFinalizer) {
+			logger.Info(
+				"The RayCluster with PodSnapshot enabled is being deleted. Start to handle the PodSnapshot cleanup finalizer.",
+				"podSnapshotCleanupFinalizer", utils.PodSnapshotCleanupFinalizer,
+				"deletionTimestamp", instance.ObjectMeta.DeletionTimestamp,
+			)
+
+			if err := r.cleanUpPodSnapshots(ctx, instance); err != nil {
+				return ctrl.Result{RequeueAfter: DefaultRequeueDuration}, err
+			}
+
+			controllerutil.RemoveFinalizer(instance, utils.PodSnapshotCleanupFinalizer)
+			if err := r.Update(ctx, instance); err != nil {
+				return ctrl.Result{RequeueAfter: DefaultRequeueDuration}, err
+			}
+			return ctrl.Result{}, nil
+		}
+	} else if controllerutil.ContainsFinalizer(instance, utils.PodSnapshotCleanupFinalizer) {
+		controllerutil.RemoveFinalizer(instance, utils.PodSnapshotCleanupFinalizer)
+		if err := r.Update(ctx, instance); err != nil {
+			return ctrl.Result{RequeueAfter: DefaultRequeueDuration}, err
+		}
+	}
+
 	if instance.DeletionTimestamp != nil && !instance.DeletionTimestamp.IsZero() {
 		logger.Info("RayCluster is being deleted, just ignore")
 		return ctrl.Result{}, nil
@@ -2162,4 +2204,43 @@ func setDefaults(instance *rayv1.RayCluster) {
 			instance.Spec.WorkerGroupSpecs[i].RayStartParams = map[string]string{}
 		}
 	}
+}
+
+func (r *RayClusterReconciler) cleanUpPodSnapshots(ctx context.Context, instance *rayv1.RayCluster) error {
+	logger := ctrl.LoggerFrom(ctx)
+	logger.Info("Cleaning up PodSnapshots")
+
+	// Get the PodSnapshotPolicy policyName
+	policyName := fmt.Sprintf("%s-head-snapshot-policy", instance.Name)
+
+	snapshotList := &unstructured.UnstructuredList{}
+	snapshotList.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "podsnapshot.gke.io",
+		Version: "v1alpha1",
+		Kind:    "PodSnapshotList",
+	})
+
+	if err := r.List(ctx, snapshotList, client.InNamespace(instance.Namespace)); err != nil {
+		// Ignore if the CRD itself is not installed
+		if strings.Contains(err.Error(), "no matches for kind") {
+			logger.Info("PodSnapshot CRD not found, skipping cleanup")
+			return nil
+		}
+		return fmt.Errorf("failed to list PodSnapshots: %w", err)
+	}
+
+	for _, snapshot := range snapshotList.Items {
+		pn, _, _ := unstructured.NestedString(snapshot.Object, "spec", "policyName")
+		if pn == policyName {
+			if err := r.Delete(ctx, &snapshot); err != nil {
+				if !errors.IsNotFound(err) {
+					return fmt.Errorf("failed to delete PodSnapshot %s: %w", snapshot.GetName(), err)
+				}
+			} else {
+				logger.Info("Deleted PodSnapshot", "name", snapshot.GetName())
+			}
+		}
+	}
+
+	return nil
 }
