@@ -1,0 +1,69 @@
+apiVersion: podsnapshot.gke.io/v1alpha1
+kind: PodSnapshotStorageConfig
+metadata:
+  name: ray-snapshot-storage
+spec:
+  snapshotStorageConfig:
+    gcs:
+      bucket: sizhang-ray-experimental
+---
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: raycluster-snapshot-test
+spec:
+  rayVersion: '2.52.0'
+  headGroupSpec:
+    headBackupRestore:
+      enable: true
+      backupInterval: 2m
+      storageConfigName: ray-snapshot-storage
+    rayStartParams: {}
+    template:
+      spec:
+        serviceAccountName: ray-ksa
+        runtimeClassName: gvisor
+        nodeSelector:
+          cloud.google.com/gke-nodepool: ps-node-pool
+        tolerations:
+        - key: "sandbox.gke.io/runtime"
+          operator: "Equal"
+          value: "gvisor"
+          effect: "NoSchedule"
+        containers:
+        - name: ray-head
+          image: rayproject/ray:2.52.0
+          resources:
+            limits:
+              cpu: "250m"
+              memory: "512Mi"
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+  workerGroupSpecs:
+  - replicas: 2
+    minReplicas: 2
+    maxReplicas: 2
+    groupName: workers
+    rayStartParams: {}
+    template:
+      spec:
+        serviceAccountName: ray-ksa
+        runtimeClassName: gvisor
+        nodeSelector:
+          cloud.google.com/gke-nodepool: ps-node-pool
+        tolerations:
+        - key: "sandbox.gke.io/runtime"
+          operator: "Equal"
+          value: "gvisor"
+          effect: "NoSchedule"
+        containers:
+        - name: ray-worker
+          image: rayproject/ray:2.52.0
+          resources:
+            limits:
+              cpu: "250m"
+              memory: "512Mi"
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
