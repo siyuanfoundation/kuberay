@@ -1,0 +1,18 @@
+# rm -rf tmpm/* && python -m pyragify --config-file pyragify_config.yaml
+repo_path: /usr/local/google/home/sizhang/Projects/ray-projects/kuberay/ray-operator
+output_dir: /usr/local/google/home/sizhang/Projects/ray-projects/kuberay/tmp/pyragify_output
+max_words: 500000
+max_file_size: 10485760 # 10 MB
+skip_patterns:
+ - "*_test.go"
+ - "*_mock.go"
+ - "*.mod"
+ - "*.sum"
+ - "*.sh"
+ - "*.log"
+ - "*.tmp"
+ - "**/test/**"
+ - "**/hack/**"
+ - "__pycache__/"
+skip_dirs: []
+verbose: false
