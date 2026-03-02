@@ -24,7 +24,9 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/ptr"
@@ -112,6 +114,7 @@ type RayClusterReconcilerOptions struct {
 // +kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs=get;list;watch;create;delete
 // +kubebuilder:rbac:groups="rbac.authorization.k8s.io",resources=roles,verbs=get;list;watch;create;delete;update
 // +kubebuilder:rbac:groups="rbac.authorization.k8s.io",resources=rolebindings,verbs=get;list;watch;create;delete
+// +kubebuilder:rbac:groups=podsnapshot.gke.io,resources=podsnapshotpolicies;podsnapshots;podsnapshotmanualtriggers,verbs=get;list;watch;create;update;patch;delete
 
 // [WARNING]: There MUST be a newline after kubebuilder markers.
 
@@ -313,6 +316,7 @@ func (r *RayClusterReconciler) rayClusterReconcile(ctx context.Context, instance
 		r.reconcileHeadService,
 		r.reconcileHeadlessService,
 		r.reconcileServeService,
+		r.reconcileHeadPodSnapshot,
 		r.reconcilePods,
 	}
 
@@ -576,6 +580,143 @@ func (r *RayClusterReconciler) reconcileServeService(ctx context.Context, instan
 		return r.Create(ctx, svc)
 	}
 	return err
+}
+
+// reconcileHeadPodSnapshot manages periodic GKE PodSnapshots for the head pod.
+func (r *RayClusterReconciler) reconcileHeadPodSnapshot(ctx context.Context, instance *rayv1.RayCluster) error {
+	logger := ctrl.LoggerFrom(ctx)
+
+	backupSpec := instance.Spec.HeadGroupSpec.HeadBackupRestore
+	if backupSpec == nil || backupSpec.Enable == nil || !*backupSpec.Enable {
+		return nil
+	}
+	if backupSpec.BackupInterval == nil || backupSpec.BackupInterval.Duration <= 0 {
+		return nil
+	}
+
+	logger.Info("Reconciling Head Pod Snapshot")
+
+	// 1. Ensure the PodSnapshotPolicy exists.
+	policyName := fmt.Sprintf("%s-head-snapshot-policy", instance.Name)
+	policy := &unstructured.Unstructured{}
+	policy.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "podsnapshot.gke.io",
+		Version: "v1alpha1",
+		Kind:    "PodSnapshotPolicy",
+	})
+	policy.SetName(policyName)
+	policy.SetNamespace(instance.Namespace)
+
+	// Since we are using Unstructured, we need to manually fetch it first
+	err := r.Get(ctx, types.NamespacedName{Name: policyName, Namespace: instance.Namespace}, policy)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("Creating PodSnapshotPolicy for Head Pod", "name", policyName)
+			// Construct the unstructured policy
+			policy.SetOwnerReferences([]metav1.OwnerReference{
+				*metav1.NewControllerRef(instance, rayv1.SchemeGroupVersion.WithKind("RayCluster")),
+			})
+
+			// Set MatchLabels to match the head pod
+			headLabels := common.RayClusterHeadPodsAssociationOptions(instance).ToListOptions()[0].(client.MatchingLabels)
+			policySpec := map[string]interface{}{
+				"selector": map[string]interface{}{
+					"matchLabels": headLabels,
+				},
+				"retention": map[string]interface{}{
+					"maxSnapshots": int64(3), // Keeping it small for prototype
+				},
+				"triggerConfig": map[string]interface{}{
+					"type": "manual",
+				},
+			}
+			if backupSpec.StorageConfigName != "" {
+				policySpec["storageConfigName"] = backupSpec.StorageConfigName
+			}
+
+			err = unstructured.SetNestedMap(policy.Object, policySpec, "spec")
+			if err != nil {
+				return fmt.Errorf("failed to set podsnapshotpolicy spec: %w", err)
+			}
+
+			if err := r.Create(ctx, policy); err != nil {
+				return fmt.Errorf("failed to create PodSnapshotPolicy %s: %w", policyName, err)
+			}
+		} else {
+			return fmt.Errorf("failed to get PodSnapshotPolicy %s: %w", policyName, err)
+		}
+	}
+
+	// 2. See if we need to take a snapshot based on BackupInterval and LastPodSnapshotTime
+	now := time.Now()
+	var lastSnapshotTime time.Time
+	if instance.Status.LastPodSnapshotTime != nil {
+		lastSnapshotTime = instance.Status.LastPodSnapshotTime.Time
+	}
+
+	timeSinceLastSnapshot := now.Sub(lastSnapshotTime)
+	if timeSinceLastSnapshot >= backupSpec.BackupInterval.Duration {
+		logger.Info("Creating PodSnapshotManualTrigger for Head Pod")
+		triggerName := fmt.Sprintf("%s-snapshot-trigger-%d", instance.Name, now.Unix())
+
+		trigger := &unstructured.Unstructured{}
+		trigger.SetGroupVersionKind(schema.GroupVersionKind{
+			Group:   "podsnapshot.gke.io",
+			Version: "v1alpha1",
+			Kind:    "PodSnapshotManualTrigger",
+		})
+		trigger.SetName(triggerName)
+		trigger.SetNamespace(instance.Namespace)
+		trigger.SetOwnerReferences([]metav1.OwnerReference{
+			*metav1.NewControllerRef(instance, rayv1.SchemeGroupVersion.WithKind("RayCluster")),
+		})
+
+		triggerSpec := map[string]interface{}{}
+		triggerSpec["policyName"] = policyName
+
+		if err := unstructured.SetNestedMap(trigger.Object, triggerSpec, "spec"); err != nil {
+			return fmt.Errorf("failed to set PodSnapshotManualTrigger spec: %w", err)
+		}
+
+		if err := r.Create(ctx, trigger); err != nil {
+			return fmt.Errorf("failed to create PodSnapshotManualTrigger %s: %w", triggerName, err)
+		}
+
+		// Update cluster status with the time, name.
+		// NOTE: In the current KubeRay implementation, updating the cluster status triggers a requeue.
+		// To adhere to best practices, we update the original instance directly since the deepcopied
+		// instance status is populated and overwritten by r.updateRayClusterStatus later in Reconcile.
+		instance.Status.LastPodSnapshotTime = &metav1.Time{Time: now}
+		// The pod snapshot name is usually identical to the trigger name in GKE PodSnapshots
+		instance.Status.LastPodSnapshotName = triggerName
+		instance.Status.LastPodSnapshotStatus = "Waiting"
+	} else {
+		// 3. Status checking step: if waiting, let's query the snapshot status
+		if instance.Status.LastPodSnapshotName != "" && instance.Status.LastPodSnapshotStatus != "AllSnapshotsAvailable" {
+			snapshot := &unstructured.Unstructured{}
+			snapshot.SetGroupVersionKind(schema.GroupVersionKind{
+				Group:   "podsnapshot.gke.io",
+				Version: "v1alpha1",
+				Kind:    "PodSnapshot",
+			})
+
+			err := r.Get(ctx, types.NamespacedName{Name: instance.Status.LastPodSnapshotName, Namespace: instance.Namespace}, snapshot)
+			if err != nil {
+				if errors.IsNotFound(err) {
+					// wait longer
+				} else {
+					logger.Error(err, "failed to get PodSnapshot to update status")
+				}
+			} else {
+				state, found, err := unstructured.NestedString(snapshot.Object, "status", "state")
+				if err == nil && found {
+					instance.Status.LastPodSnapshotStatus = state
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 // Return nil only when the headless service for multi-host worker groups is successfully created or already exists.

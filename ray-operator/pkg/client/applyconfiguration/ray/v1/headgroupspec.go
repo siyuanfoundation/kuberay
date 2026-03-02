@@ -30,6 +30,8 @@ type HeadGroupSpecApplyConfiguration struct {
 	RayStartParams map[string]string `json:"rayStartParams,omitempty"`
 	// ServiceType is Kubernetes service type of the head service. it will be used by the workers to connect to the head pod
 	ServiceType *apicorev1.ServiceType `json:"serviceType,omitempty"`
+	// HeadBackupRestore configuration for the head pod
+	HeadBackupRestore *HeadBackupRestoreSpecApplyConfiguration `json:"headBackupRestore,omitempty"`
 }
 
 // HeadGroupSpecApplyConfiguration constructs a declarative configuration of the HeadGroupSpec type for use with
@@ -109,5 +111,13 @@ func (b *HeadGroupSpecApplyConfiguration) WithRayStartParams(entries map[string]
 // If called multiple times, the ServiceType field is set to the value of the last call.
 func (b *HeadGroupSpecApplyConfiguration) WithServiceType(value apicorev1.ServiceType) *HeadGroupSpecApplyConfiguration {
 	b.ServiceType = &value
+	return b
+}
+
+// WithHeadBackupRestore sets the HeadBackupRestore field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the HeadBackupRestore field is set to the value of the last call.
+func (b *HeadGroupSpecApplyConfiguration) WithHeadBackupRestore(value *HeadBackupRestoreSpecApplyConfiguration) *HeadGroupSpecApplyConfiguration {
+	b.HeadBackupRestore = value
 	return b
 }

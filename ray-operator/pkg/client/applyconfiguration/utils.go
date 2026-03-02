@@ -34,6 +34,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &rayv1.DeletionStrategyApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("GcsFaultToleranceOptions"):
 		return &rayv1.GcsFaultToleranceOptionsApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("HeadBackupRestoreSpec"):
+		return &rayv1.HeadBackupRestoreSpecApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("HeadGroupSpec"):
 		return &rayv1.HeadGroupSpecApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("HeadInfo"):

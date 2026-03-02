@@ -136,6 +136,20 @@ rules:
   - list
   - watch
 - apiGroups:
+  - podsnapshot.gke.io
+  resources:
+  - podsnapshotmanualtriggers
+  - podsnapshotpolicies
+  - podsnapshots
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
   - ray.io
   resources:
   - rayclusters

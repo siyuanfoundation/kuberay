@@ -138,6 +138,27 @@ type HeadGroupSpec struct {
 	// ServiceType is Kubernetes service type of the head service. it will be used by the workers to connect to the head pod
 	// +optional
 	ServiceType corev1.ServiceType `json:"serviceType,omitempty"`
+	// HeadBackupRestore configuration for the head pod
+	// +optional
+	HeadBackupRestore *HeadBackupRestoreSpec `json:"headBackupRestore,omitempty"`
+}
+
+// HeadBackupRestoreSpec defines the backup and restore configuration for the Ray head pod
+// using the GKE PodSnapshot feature (podsnapshots.gke.io).
+type HeadBackupRestoreSpec struct {
+	// Enable indicates whether to enable periodic backup for the Ray head pod.
+	// +optional
+	Enable *bool `json:"enable,omitempty"`
+	// BackupInterval specifies the interval for taking periodic snapshots.
+	// +optional
+	BackupInterval *metav1.Duration `json:"backupInterval,omitempty"`
+	// StorageConfigName is the name of the PodSnapshotStorageConfig resource used to store the snapshots.
+	// +optional
+	StorageConfigName string `json:"storageConfigName,omitempty"`
+	// RestoreFrom specific snapshot name. When specified, the operator will add the
+	// `podsnapshot.gke.io/ps-name` annotation to restore the head pod from this snapshot.
+	// +optional
+	RestoreFrom string `json:"restoreFrom,omitempty"`
 }
 
 // WorkerGroupSpec are the specs for the worker pods
@@ -284,6 +305,15 @@ type RayClusterStatus struct {
 	// LastUpdateTime indicates last update timestamp for this cluster status.
 	// +nullable
 	LastUpdateTime *metav1.Time `json:"lastUpdateTime,omitempty"`
+	// LastPodSnapshotTime indicates the timestamp when the last head pod snapshot was triggered or created.
+	// +nullable
+	LastPodSnapshotTime *metav1.Time `json:"lastPodSnapshotTime,omitempty"`
+	// LastPodSnapshotName indicates the name of the last generated PodSnapshot.
+	// +optional
+	LastPodSnapshotName string `json:"lastPodSnapshotName,omitempty"`
+	// LastPodSnapshotStatus indicates the status of the last generated PodSnapshot.
+	// +optional
+	LastPodSnapshotStatus string `json:"lastPodSnapshotStatus,omitempty"`
 	// StateTransitionTimes indicates the time of the last state transition for each state.
 	// +optional
 	StateTransitionTimes map[ClusterState]*metav1.Time `json:"stateTransitionTimes,omitempty"`

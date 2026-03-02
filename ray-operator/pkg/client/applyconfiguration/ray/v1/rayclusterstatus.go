@@ -30,6 +30,12 @@ type RayClusterStatusApplyConfiguration struct {
 	DesiredTPU *resource.Quantity `json:"desiredTPU,omitempty"`
 	// LastUpdateTime indicates last update timestamp for this cluster status.
 	LastUpdateTime *metav1.Time `json:"lastUpdateTime,omitempty"`
+	// LastPodSnapshotTime indicates the timestamp when the last head pod snapshot was triggered or created.
+	LastPodSnapshotTime *metav1.Time `json:"lastPodSnapshotTime,omitempty"`
+	// LastPodSnapshotName indicates the name of the last generated PodSnapshot.
+	LastPodSnapshotName *string `json:"lastPodSnapshotName,omitempty"`
+	// LastPodSnapshotStatus indicates the status of the last generated PodSnapshot.
+	LastPodSnapshotStatus *string `json:"lastPodSnapshotStatus,omitempty"`
 	// StateTransitionTimes indicates the time of the last state transition for each state.
 	StateTransitionTimes map[rayv1.ClusterState]*metav1.Time `json:"stateTransitionTimes,omitempty"`
 	// Service Endpoints
@@ -114,6 +120,30 @@ func (b *RayClusterStatusApplyConfiguration) WithDesiredTPU(value resource.Quant
 // If called multiple times, the LastUpdateTime field is set to the value of the last call.
 func (b *RayClusterStatusApplyConfiguration) WithLastUpdateTime(value metav1.Time) *RayClusterStatusApplyConfiguration {
 	b.LastUpdateTime = &value
+	return b
+}
+
+// WithLastPodSnapshotTime sets the LastPodSnapshotTime field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the LastPodSnapshotTime field is set to the value of the last call.
+func (b *RayClusterStatusApplyConfiguration) WithLastPodSnapshotTime(value metav1.Time) *RayClusterStatusApplyConfiguration {
+	b.LastPodSnapshotTime = &value
+	return b
+}
+
+// WithLastPodSnapshotName sets the LastPodSnapshotName field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the LastPodSnapshotName field is set to the value of the last call.
+func (b *RayClusterStatusApplyConfiguration) WithLastPodSnapshotName(value string) *RayClusterStatusApplyConfiguration {
+	b.LastPodSnapshotName = &value
+	return b
+}
+
+// WithLastPodSnapshotStatus sets the LastPodSnapshotStatus field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the LastPodSnapshotStatus field is set to the value of the last call.
+func (b *RayClusterStatusApplyConfiguration) WithLastPodSnapshotStatus(value string) *RayClusterStatusApplyConfiguration {
+	b.LastPodSnapshotStatus = &value
 	return b
 }
 

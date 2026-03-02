@@ -497,6 +497,17 @@ spec:
                 properties:
                   enableIngress:
                     type: boolean
+                  headBackupRestore:
+                    properties:
+                      backupInterval:
+                        type: string
+                      enable:
+                        type: boolean
+                      restoreFrom:
+                        type: string
+                      storageConfigName:
+                        type: string
+                    type: object
                   headService:
                     properties:
                       apiVersion:
@@ -8524,6 +8535,14 @@ spec:
                   serviceName:
                     type: string
                 type: object
+              lastPodSnapshotName:
+                type: string
+              lastPodSnapshotStatus:
+                type: string
+              lastPodSnapshotTime:
+                format: date-time
+                nullable: true
+                type: string
               lastUpdateTime:
                 format: date-time
                 nullable: true

@@ -241,6 +241,26 @@ _Appears in:_
 | `redisAddress` _string_ |  |  |  |
 
 
+#### HeadBackupRestoreSpec
+
+
+
+HeadBackupRestoreSpec defines the backup and restore configuration for the Ray head pod
+using the GKE PodSnapshot feature (podsnapshots.gke.io).
+
+
+
+_Appears in:_
+- [HeadGroupSpec](#headgroupspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `enable` _boolean_ | Enable indicates whether to enable periodic backup for the Ray head pod. |  |  |
+| `backupInterval` _[Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#duration-v1-meta)_ | BackupInterval specifies the interval for taking periodic snapshots. |  |  |
+| `storageConfigName` _string_ | StorageConfigName is the name of the PodSnapshotStorageConfig resource used to store the snapshots. |  |  |
+| `restoreFrom` _string_ | RestoreFrom specific snapshot name. When specified, the operator will add the<br />`podsnapshot.gke.io/ps-name` annotation to restore the head pod from this snapshot. |  |  |
+
+
 #### HeadGroupSpec
 
 
@@ -261,6 +281,7 @@ _Appears in:_
 | `labels` _object (keys:string, values:string)_ | Labels specifies the Ray node labels for the head group.<br />These labels will also be added to the Pods of this head group and override the `--labels`<br />argument passed to `rayStartParams`. |  |  |
 | `rayStartParams` _object (keys:string, values:string)_ | RayStartParams are the params of the start command: node-manager-port, object-store-memory, ... |  |  |
 | `serviceType` _[ServiceType](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#servicetype-v1-core)_ | ServiceType is Kubernetes service type of the head service. it will be used by the workers to connect to the head pod |  |  |
+| `headBackupRestore` _[HeadBackupRestoreSpec](#headbackuprestorespec)_ | HeadBackupRestore configuration for the head pod |  |  |
 
 
 

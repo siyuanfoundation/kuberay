@@ -235,6 +235,14 @@ func DefaultHeadPodTemplate(ctx context.Context, instance rayv1.RayCluster, head
 		configureTokenAuth(instance.Name, &podTemplate, instance.Spec.AuthOptions)
 	}
 
+	// If HeadBackupRestore is enabled and a specific snapshot is requested to restore from, add the annotation
+	if instance.Spec.HeadGroupSpec.HeadBackupRestore != nil && instance.Spec.HeadGroupSpec.HeadBackupRestore.RestoreFrom != "" {
+		if podTemplate.Annotations == nil {
+			podTemplate.Annotations = make(map[string]string)
+		}
+		podTemplate.Annotations["podsnapshot.gke.io/ps-name"] = instance.Spec.HeadGroupSpec.HeadBackupRestore.RestoreFrom
+	}
+
 	return podTemplate
 }
 
