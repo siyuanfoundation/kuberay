@@ -618,7 +618,10 @@ func (r *RayClusterReconciler) reconcileHeadPodSnapshot(ctx context.Context, ins
 			})
 
 			// Set MatchLabels to match the head pod
-			headLabels := common.RayClusterHeadPodsAssociationOptions(instance).ToListOptions()[0].(client.MatchingLabels)
+			headLabels := map[string]interface{}{
+				utils.RayClusterLabelKey:  instance.Name,
+				utils.RayNodeTypeLabelKey: string(rayv1.HeadNode),
+			}
 			policySpec := map[string]interface{}{
 				"selector": map[string]interface{}{
 					"matchLabels": headLabels,
@@ -654,6 +657,15 @@ func (r *RayClusterReconciler) reconcileHeadPodSnapshot(ctx context.Context, ins
 		lastSnapshotTime = instance.Status.LastPodSnapshotTime.Time
 	}
 
+	headPod, err := common.GetRayClusterHeadPod(ctx, r.Client, instance)
+	if err != nil {
+		return fmt.Errorf("failed to get head pod: %w", err)
+	}
+	if headPod == nil {
+		logger.Info("Head pod not found yet, skipping PodSnapshotManualTrigger creation")
+		return nil
+	}
+
 	timeSinceLastSnapshot := now.Sub(lastSnapshotTime)
 	if timeSinceLastSnapshot >= backupSpec.BackupInterval.Duration {
 		logger.Info("Creating PodSnapshotManualTrigger for Head Pod")
@@ -673,6 +685,8 @@ func (r *RayClusterReconciler) reconcileHeadPodSnapshot(ctx context.Context, ins
 
 		triggerSpec := map[string]interface{}{}
 		triggerSpec["policyName"] = policyName
+
+		triggerSpec["targetPod"] = headPod.Name
 
 		if err := unstructured.SetNestedMap(trigger.Object, triggerSpec, "spec"); err != nil {
 			return fmt.Errorf("failed to set PodSnapshotManualTrigger spec: %w", err)
