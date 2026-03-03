@@ -20,7 +20,7 @@ spec:
   headGroupSpec:
     headBackupRestore:
       enable: true
-      backupInterval: 15m
+      backupInterval: 2m
       storageConfigName: ray-snapshot-storage
     rayStartParams: {}
     template:
@@ -39,11 +39,11 @@ spec:
           image: rayproject/ray:2.52.0
           resources:
             limits:
-              cpu: "250m"
-              memory: "512Mi"
+              cpu: 1
+              memory: 2Gi
             requests:
-              cpu: "250m"
-              memory: "512Mi"
+              cpu: 1
+              memory: 2Gi
   workerGroupSpecs:
   - replicas: 2
     minReplicas: 2
@@ -66,8 +66,8 @@ spec:
           image: rayproject/ray:2.52.0
           resources:
             limits:
-              cpu: "250m"
-              memory: "512Mi"
+              cpu: 1
+              memory: 2Gi
             requests:
-              cpu: "250m"
-              memory: "512Mi"
+              cpu: 1
+              memory: 2Gi

@@ -709,7 +709,7 @@ func (r *RayClusterReconciler) reconcileHeadPodSnapshot(ctx context.Context, ins
 	}
 
 	timeSinceLastSnapshot := now.Sub(lastSnapshotTime)
-	if timeSinceLastSnapshot >= backupSpec.BackupInterval.Duration {
+	if instance.Status.State == rayv1.Ready && timeSinceLastSnapshot >= backupSpec.BackupInterval.Duration {
 		logger.Info("Creating PodSnapshotManualTrigger for Head Pod")
 		triggerName := fmt.Sprintf("%s-snapshot-trigger-%d", instance.Name, now.Unix())
 
