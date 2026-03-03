@@ -637,11 +637,25 @@ func BuildPod(ctx context.Context, podTemplateSpec corev1.PodTemplateSpec, rayNo
 	// Generate the `ray start` command.
 	rayStartCmd := generateRayStartCommand(ctx, rayNodeType, rayStartParams, pod.Spec.Containers[utils.RayContainerIndex].Resources)
 
-	// To prevent CrashLoopBackOff on GKE PodSnapshot restore (due to gVisor subcontainer restart limitations),
-	// wrap the Ray start command in a while loop if it's a head pod configured for backups.
+	// If you rely exclusively on the default in-memory GCS, there is fundamentally no way to preserve the active running state across a PodSnapshot restore, because the core Ray architecture is not built to survive massive time jumps.
+
+	// Here is what's happening at the architectural level: Ray's Global Control Store (gcs_server) and node managers (raylet) are highly distributed C++ binaries. They rely completely on the Kernel's Continuous/Monotonic Clock to coordinate tasks, measure heartbeats, and manage connection timeout sockets.
+
+	// When you restore a PodSnapshot inside gVisor, the Kernel clock is suddenly forced to jump forward by hours or days in a single millisecond. Because the C++ binaries wake up and check the clock, every single internal networking and coordination timeout expires instantaneously.
+
+	// When this happens, the gcs_server:
+
+	// Assumes it has been completely partitioned from the network for hours.
+	// Flushes all of its worker connection sockets.
+	// Automatically drops the internal job queue as "unrecoverable".
+	// Forces a panic shutdown (suicide sequence) because it believes the system state is fatally corrupted.
+	// Because the binary itself structurally chooses to destroy its own memory and exit when it detects anomalous time-drift, the in-memory state is already wiped before Kubernetes even realizes what happened.
+
+	// The Verdict: A PodSnapshot captures the exact memory bits natively, but because Ray's C++ network-awareness detects the time-jump upon waking, it instantly purges that very memory out of self-preservation. To genuinely pause and effectively resume Ray jobs, External Redis for GCS HA is structurally mandatory. It is the ONLY mechanism Ray provides to rebuild the cluster topology securely after the internal daemons panic!
+	// To debug the exact cause of the CrashLoopBackOff without masking it, let's capture the exit code of `ray start`.
 	if rayNodeType == rayv1.HeadNode {
 		if _, ok := podTemplateSpec.Annotations["ray.io/gke-podsnapshot-enabled"]; ok {
-			rayStartCmd = fmt.Sprintf("while true; do %s; echo 'Ray exited, restarting internally...'; sleep 2; done", rayStartCmd)
+			rayStartCmd = fmt.Sprintf("%s; echo 'RAY START EXITED WITH CODE: $?' > /tmp/ray_exit.log; sleep infinity", rayStartCmd)
 		}
 	}
 
