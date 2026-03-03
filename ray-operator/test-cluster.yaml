@@ -22,7 +22,8 @@ spec:
       enable: true
       backupInterval: 2m
       storageConfigName: ray-snapshot-storage
-    rayStartParams: {}
+    rayStartParams:
+      node-ip-address: "raycluster-snapshot-test-head-svc.default.svc.cluster.local"
     template:
       spec:
         serviceAccountName: ray-ksa
@@ -44,6 +45,11 @@ spec:
             requests:
               cpu: 1
               memory: 2Gi
+          env:
+          - name: RAY_gcs_rpc_server_reconnect_timeout_s
+            value: "3600"
+          - name: RAY_node_death_timeout_ms
+            value: "3600000"
           livenessProbe:
             initialDelaySeconds: 120
             periodSeconds: 10

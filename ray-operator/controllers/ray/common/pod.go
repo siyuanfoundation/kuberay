@@ -235,12 +235,16 @@ func DefaultHeadPodTemplate(ctx context.Context, instance rayv1.RayCluster, head
 		configureTokenAuth(instance.Name, &podTemplate, instance.Spec.AuthOptions)
 	}
 
-	// If HeadBackupRestore is enabled and a specific snapshot is requested to restore from, add the annotation
-	if instance.Spec.HeadGroupSpec.HeadBackupRestore != nil && instance.Spec.HeadGroupSpec.HeadBackupRestore.RestoreFrom != "" {
+	if instance.Spec.HeadGroupSpec.HeadBackupRestore != nil {
 		if podTemplate.Annotations == nil {
 			podTemplate.Annotations = make(map[string]string)
 		}
-		podTemplate.Annotations["podsnapshot.gke.io/ps-name"] = instance.Spec.HeadGroupSpec.HeadBackupRestore.RestoreFrom
+		if instance.Spec.HeadGroupSpec.HeadBackupRestore.Enable != nil && *instance.Spec.HeadGroupSpec.HeadBackupRestore.Enable {
+			podTemplate.Annotations["ray.io/gke-podsnapshot-enabled"] = "true"
+		}
+		if instance.Spec.HeadGroupSpec.HeadBackupRestore.RestoreFrom != "" {
+			podTemplate.Annotations["podsnapshot.gke.io/ps-name"] = instance.Spec.HeadGroupSpec.HeadBackupRestore.RestoreFrom
+		}
 	}
 
 	return podTemplate
@@ -632,6 +636,14 @@ func BuildPod(ctx context.Context, podTemplateSpec corev1.PodTemplateSpec, rayNo
 	ulimitCmd := "ulimit -n 65536"
 	// Generate the `ray start` command.
 	rayStartCmd := generateRayStartCommand(ctx, rayNodeType, rayStartParams, pod.Spec.Containers[utils.RayContainerIndex].Resources)
+
+	// To prevent CrashLoopBackOff on GKE PodSnapshot restore (due to gVisor subcontainer restart limitations),
+	// wrap the Ray start command in a while loop if it's a head pod configured for backups.
+	if rayNodeType == rayv1.HeadNode {
+		if _, ok := podTemplateSpec.Annotations["ray.io/gke-podsnapshot-enabled"]; ok {
+			rayStartCmd = fmt.Sprintf("while true; do %s; echo 'Ray exited, restarting internally...'; sleep 2; done", rayStartCmd)
+		}
+	}
 
 	// Check if overwrites the generated container command or not.
 	isOverwriteRayContainerCmd := false
