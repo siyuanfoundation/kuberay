@@ -109,3 +109,22 @@ spec:
             requests:
               cpu: 1
               memory: 2Gi
+
+---
+# need to create a proxy pod to access the dashboard due to gvisor network policy
+# for testing ray dashboard, connect by `kubectl port-forward pod/ray-dashboard-proxy 8265:8265`
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ray-dashboard-proxy
+  labels:
+    app: ray-dashboard-proxy
+spec:
+  containers:
+  - name: socat
+    image: alpine/socat
+    args:
+    - tcp-listen:8265,fork,reuseaddr
+    - tcp-connect:raycluster-snapshot-test-head-svc.default.svc.cluster.local:8265
+    ports:
+    - containerPort: 8265
