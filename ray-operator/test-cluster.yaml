@@ -47,9 +47,23 @@ spec:
               memory: 2Gi
           env:
           - name: RAY_gcs_rpc_server_reconnect_timeout_s
-            value: "3600"
+            value: "300"
+          - name: RAY_gcs_server_request_timeout_seconds
+            value: "300"
+          - name: RAY_raylet_rpc_server_reconnect_timeout_max_s
+            value: "300"
+          - name: RAY_health_check_failure_threshold
+            value: "60"
+          - name: RAY_health_check_period_ms
+            value: "5000"
+          - name: RAY_health_check_timeout_ms
+            value: "300000"
+          - name: RAY_health_check_initial_delay_ms
+            value: "30000"
+          - name: RAY_py_gcs_connect_timeout_s
+            value: "300"
           - name: RAY_node_death_timeout_ms
-            value: "3600000"
+            value: "300000"
           livenessProbe:
             initialDelaySeconds: 120
             periodSeconds: 10
