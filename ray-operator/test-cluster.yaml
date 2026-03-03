@@ -44,6 +44,24 @@ spec:
             requests:
               cpu: 1
               memory: 2Gi
+          livenessProbe:
+            initialDelaySeconds: 120
+            periodSeconds: 10
+            failureThreshold: 20
+            exec:
+              command:
+              - bash
+              - -c
+              - wget --tries 1 -T 2 -q -O- http://localhost:52365/api/local_raylet_healthz | grep success && wget --tries 1 -T 10 -q -O- http://localhost:8265/api/gcs_healthz | grep success
+          readinessProbe:
+            initialDelaySeconds: 120
+            periodSeconds: 10
+            failureThreshold: 20
+            exec:
+              command:
+              - bash
+              - -c
+              - wget --tries 1 -T 2 -q -O- http://localhost:52365/api/local_raylet_healthz | grep success && wget --tries 1 -T 10 -q -O- http://localhost:8265/api/gcs_healthz | grep success
   workerGroupSpecs:
   - replicas: 2
     minReplicas: 2
