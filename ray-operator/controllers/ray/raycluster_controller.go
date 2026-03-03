@@ -408,8 +408,27 @@ func (r *RayClusterReconciler) rayClusterReconcile(ctx context.Context, instance
 		)
 		requeueAfterSeconds = utils.RAYCLUSTER_DEFAULT_REQUEUE_SECONDS
 	}
-	logger.Info("Unconditional requeue after", "seconds", requeueAfterSeconds)
-	return ctrl.Result{RequeueAfter: time.Duration(requeueAfterSeconds) * time.Second}, nil
+	requeueDuration := time.Duration(requeueAfterSeconds) * time.Second
+
+	// Override the default RequeueAfter with the Snapshot interval if it is enabled and due sooner.
+	if instance.Spec.HeadGroupSpec.HeadBackupRestore != nil && instance.Spec.HeadGroupSpec.HeadBackupRestore.Enable != nil && *instance.Spec.HeadGroupSpec.HeadBackupRestore.Enable && instance.Spec.HeadGroupSpec.HeadBackupRestore.BackupInterval != nil {
+		backupDuration := instance.Spec.HeadGroupSpec.HeadBackupRestore.BackupInterval.Duration
+		if instance.Status.LastPodSnapshotTime != nil {
+			timeSinceLastSnapshot := time.Now().Sub(instance.Status.LastPodSnapshotTime.Time)
+			remainingTime := backupDuration - timeSinceLastSnapshot
+			if remainingTime > 0 && remainingTime < requeueDuration {
+				requeueDuration = remainingTime
+				logger.Info("Overriding unconditional requeue to honor upcoming PodSnapshot trigger", "duration", requeueDuration)
+			}
+		} else {
+			if backupDuration < requeueDuration {
+				requeueDuration = backupDuration
+			}
+		}
+	}
+
+	logger.Info("Unconditional requeue after", "seconds", requeueDuration.Seconds())
+	return ctrl.Result{RequeueAfter: requeueDuration}, nil
 }
 
 func (r *RayClusterReconciler) reconcileAuthSecret(ctx context.Context, instance *rayv1.RayCluster) error {
