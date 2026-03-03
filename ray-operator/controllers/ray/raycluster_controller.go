@@ -2213,6 +2213,37 @@ func (r *RayClusterReconciler) cleanUpPodSnapshots(ctx context.Context, instance
 	// Get the PodSnapshotPolicy policyName
 	policyName := fmt.Sprintf("%s-head-snapshot-policy", instance.Name)
 
+	policyObj := &unstructured.Unstructured{}
+	policyObj.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "podsnapshot.gke.io",
+		Version: "v1alpha1",
+		Kind:    "PodSnapshotPolicy",
+	})
+	policyObj.SetName(policyName)
+	policyObj.SetNamespace(instance.Namespace)
+	if err := r.Delete(ctx, policyObj); err != nil && !errors.IsNotFound(err) {
+		logger.Error(err, "Failed to delete PodSnapshotPolicy during cleanup", "name", policyName)
+	} else {
+		logger.Info("Deleted PodSnapshotPolicy", "name", policyName)
+	}
+
+	triggerList := &unstructured.UnstructuredList{}
+	triggerList.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "podsnapshot.gke.io",
+		Version: "v1alpha1",
+		Kind:    "PodSnapshotManualTriggerList",
+	})
+	if err := r.List(ctx, triggerList, client.InNamespace(instance.Namespace)); err == nil {
+		for _, trigger := range triggerList.Items {
+			pn, _, _ := unstructured.NestedString(trigger.Object, "spec", "policyName")
+			if pn == policyName {
+				if err := r.Delete(ctx, &trigger); err != nil && !errors.IsNotFound(err) {
+					logger.Error(err, "Failed to delete PodSnapshotManualTrigger during cleanup", "name", trigger.GetName())
+				}
+			}
+		}
+	}
+
 	snapshotList := &unstructured.UnstructuredList{}
 	snapshotList.SetGroupVersionKind(schema.GroupVersionKind{
 		Group:   "podsnapshot.gke.io",
